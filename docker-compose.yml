@@ -1,0 +1,158 @@
+# =============================================================================
+# Docker Compose Configuration for Node.js Template
+# =============================================================================
+# This compose file provides multiple deployment profiles:
+# - create: Project creation and initialization
+# - dev: Development environment with hot-reload
+# - prod: Production environment
+# - test: Testing environment
+# =============================================================================
+
+name: ${APP_NAME:-my-node-app}
+
+# Define reusable configuration
+x-common-variables: &common-variables
+  UID: ${UID:-1000}
+  GID: ${GID:-1000}
+  NODE_ENV: ${NODE_ENV:-development}
+
+x-common-environment: &common-environment
+  NODE_ENV: ${NODE_ENV:-development}
+  PORT: ${PORT:-3000}
+  DATABASE_URL: ${DATABASE_URL:-}
+  REDIS_URL: ${REDIS_URL:-}
+  JWT_SECRET: ${JWT_SECRET:-your-jwt-secret}
+  CORS_ORIGIN: ${CORS_ORIGIN:-*}
+
+services:
+  # Project creation service
+  create:
+    image: node:22-alpine
+    working_dir: /app
+    profiles: ["create"]
+    volumes:
+      - .:/app
+    environment:
+      - APP_NAME=${APP_NAME:-my-node-app}
+      - NODE_ENV=development
+    command: sh scripts/create-project.sh
+
+  # Development service with hot-reload
+  dev:
+    build: 
+      context: .
+      target: development
+      args:
+        <<: *common-variables
+    container_name: ${APP_NAME:-my-node-app}-dev
+    ports:
+      - "${DEV_PORT:-3000}:3000"
+    volumes:
+      # Mount source code for hot-reload (excludes node_modules for performance)
+      - .:/app:cached
+      - /app/node_modules
+      - node_logs:/app/logs
+    environment:
+      <<: *common-environment
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-false}
+    # Health check for development container
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Restart policy
+    restart: unless-stopped
+    profiles: ["dev"]
+
+  # Production service
+  prod:
+    build: 
+      context: .
+      target: production
+      args:
+        <<: *common-variables
+        NODE_ENV: production
+      cache_from:
+        - node:22-alpine
+    container_name: ${APP_NAME:-my-node-app}-prod
+    ports:
+      - "${PROD_PORT:-8000}:3000"
+    volumes:
+      - node_logs:/app/logs
+      - node_uploads:/app/uploads
+    environment:
+      <<: *common-environment
+      NODE_ENV: production
+    # Health check for production container
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Restart policy for production
+    restart: unless-stopped
+    profiles: ["prod"]
+
+  # Production service with PM2
+  prod-pm2:
+    build: 
+      context: .
+      target: production-pm2
+      args:
+        <<: *common-variables
+        NODE_ENV: production
+    container_name: ${APP_NAME:-my-node-app}-prod-pm2
+    ports:
+      - "${PROD_PORT:-8000}:3000"
+    volumes:
+      - node_logs:/app/logs
+      - node_uploads:/app/uploads
+    environment:
+      <<: *common-environment
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    profiles: ["prod-pm2"]
+
+  # Testing service
+  test:
+    build: 
+      context: .
+      target: testing
+      args:
+        <<: *common-variables
+        NODE_ENV: test
+    container_name: ${APP_NAME:-my-node-app}-test
+    volumes:
+      - .:/app:cached
+      - /app/node_modules
+    environment:
+      <<: *common-environment
+      NODE_ENV: test
+      CI: true
+    profiles: ["test"]
+
+# Named volumes for better performance and persistence
+volumes:
+  # Logs volume for persistent logging
+  node_logs:
+    driver: local
+  
+  # Uploads volume for file uploads
+  node_uploads:
+    driver: local
+
+# Network configuration (optional - Docker creates default network)
+networks:
+  default:
+    name: ${APP_NAME:-my-node-app}-network
+    driver: bridge
