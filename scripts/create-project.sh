@@ -24,8 +24,7 @@ cat > package.json << PACKAGE_EOF
     "lint:fix": "eslint src/ --fix",
     "security": "npm audit"
   },
-  "keywords": ["node", "express", "docker", "api"],
-  "author": "Your Name <your.email@example.com>",
+  "keywords": ["node", "express", "docker", "api", "nginx"],
   "license": "MIT",
   "dependencies": {},
   "devDependencies": {}
@@ -73,6 +72,14 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
     version: process.env.npm_package_version || '1.0.0'
+  });
+});
+
+// Nginx status endpoint (for nginx health checks)
+app.get('/nginx-status', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'nginx-proxy-backend'
   });
 });
 
@@ -245,6 +252,15 @@ describe('App', () => {
       .expect(200);
     
     expect(response.body.status).toBe('healthy');
+  });
+
+  test('GET /nginx-status should return 200', async () => {
+    const response = await request(app)
+      .get('/nginx-status')
+      .expect(200);
+    
+    expect(response.body.status).toBe('ok');
+    expect(response.body.service).toBe('nginx-proxy-backend');
   });
   
   test('GET /api/status should return 200', async () => {

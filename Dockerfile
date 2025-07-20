@@ -222,6 +222,132 @@ COPY --chown=appuser:appgroup ecosystem.config.js ./
 CMD ["pm2-runtime", "start", "ecosystem.config.js"]
 
 # -----------------------------------------------------------------------------
+# Nginx Reverse Proxy Stage - Load balancer and reverse proxy
+# -----------------------------------------------------------------------------
+FROM nginx:1.25-alpine AS nginx
+
+# Install security updates and basic tools
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+        curl \
+        bash && \
+    rm -rf /var/cache/apk/*
+
+# Create nginx user with proper permissions
+RUN addgroup -g 1000 -S nginx-app && \
+    adduser -u 1000 -D -S -G nginx-app nginx-app
+
+# Remove default nginx configuration
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx configuration
+COPY --chown=nginx-app:nginx-app nginx.conf /etc/nginx/nginx.conf
+
+# Create necessary directories
+RUN mkdir -p /var/log/nginx /var/cache/nginx /tmp/nginx && \
+    chown -R nginx-app:nginx-app /var/log/nginx /var/cache/nginx /tmp/nginx /etc/nginx
+
+# Set proper permissions for nginx directories
+RUN chmod -R 755 /var/log/nginx /var/cache/nginx /tmp/nginx
+
+# Switch to non-root user
+USER nginx-app
+
+# Expose HTTP port
+EXPOSE 80
+
+# Health check for nginx
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost/health || curl -f http://localhost/nginx-status || exit 1
+
+# Start nginx in foreground
+CMD ["nginx", "-g", "daemon off;"]
+
+# -----------------------------------------------------------------------------
+# Production with Nginx Stage - Node.js app behind nginx reverse proxy
+# -----------------------------------------------------------------------------
+FROM nginx:1.25-alpine AS production-nginx
+
+# Install security updates and essential tools
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+        curl \
+        bash \
+        supervisor && \
+    rm -rf /var/cache/apk/*
+
+# Install Node.js for running the app alongside nginx
+RUN apk add --no-cache nodejs npm
+
+# Create application user
+RUN addgroup -g 1000 -S appgroup && \
+    adduser -u 1000 -D -S -G appgroup appuser
+
+# Set working directory
+WORKDIR /app
+
+# Copy built application from build stage
+COPY --from=build --chown=appuser:appgroup /app .
+
+# Copy nginx configuration
+COPY --chown=appuser:appgroup nginx.conf /etc/nginx/nginx.conf
+
+# Remove default nginx configuration
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Create supervisor configuration for managing both nginx and node
+RUN mkdir -p /etc/supervisor/conf.d
+COPY --chown=root:root <<EOF /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:nodejs]
+command=npm start
+directory=/app
+user=appuser
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/nodejs.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+
+[program:nginx]
+command=nginx -g "daemon off;"
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/nginx.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3
+EOF
+
+# Create necessary directories
+RUN mkdir -p /var/log/supervisor /var/log/nginx /var/cache/nginx /tmp/nginx logs uploads && \
+    chown -R appuser:appgroup /app/logs /app/uploads && \
+    chmod -R 755 /var/log/nginx /var/cache/nginx /tmp/nginx
+
+# Set production environment
+ENV NODE_ENV=production
+ENV NPM_CONFIG_LOGLEVEL=error
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
+# Expose HTTP port (nginx will proxy to Node.js on 3000)
+EXPOSE 80
+
+# Health check for the combined container
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+# Start supervisor to manage both services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+
+# -----------------------------------------------------------------------------
 # Metadata Labels for Container Management
 # -----------------------------------------------------------------------------
 LABEL maintainer="LynxPardelle <lynxpardelle@lynxpardelle.com>"

@@ -52,7 +52,16 @@ help: ## Show this help message with all available commands
 	@echo "  prod-detached     - Start production server (background)"
 	@echo "  prod-pm2          - Start production server with PM2"
 	@echo "  prod-pm2-detached - Start production with PM2 (background)"
+	@echo "  prod-nginx        - Start production with nginx reverse proxy"
+	@echo "  prod-nginx-detached - Start production with nginx (background)"
 	@echo "  prod-logs         - Show production container logs"
+	@echo ""
+	@echo "$(GREEN)🌐 Nginx Commands:$(NC)"
+	@echo "  nginx             - Start nginx reverse proxy with backend"
+	@echo "  nginx-detached    - Start nginx reverse proxy (background)"
+	@echo "  nginx-logs        - Show nginx container logs"
+	@echo "  nginx-status      - Check nginx status and configuration"
+	@echo "  nginx-reload      - Reload nginx configuration"
 	@echo ""
 	@echo "$(GREEN)📦 Package Management:$(NC)"
 	@echo "  install           - Install package (use: make install pkg=package-name)"
@@ -157,6 +166,54 @@ prod-logs: ## Show production container logs
 prod-shell: ## Access production container shell
 	@echo "$(CYAN)🔧 Accessing production container shell...$(NC)"
 	docker compose -p $(APP_NAME) exec prod sh
+
+# =============================================================================
+# Nginx Commands
+# =============================================================================
+
+nginx: ## Start nginx reverse proxy with backend
+	@echo "$(CYAN)🌐 Starting nginx reverse proxy with backend...$(NC)"
+	@echo "$(YELLOW)Port: ${NGINX_PORT:-80} | Containers: $(APP_NAME)-nginx, $(APP_NAME)-app$(NC)"
+	docker compose -p $(APP_NAME) --profile nginx up --build
+
+nginx-detached: ## Start nginx reverse proxy in background
+	@echo "$(CYAN)🌐 Starting nginx reverse proxy (background)...$(NC)"
+	docker compose -p $(APP_NAME) --profile nginx up --build -d
+	@echo "$(GREEN)✅ Nginx reverse proxy started on port ${NGINX_PORT:-80}$(NC)"
+
+prod-nginx: ## Start production with nginx reverse proxy
+	@echo "$(CYAN)🏗️ Starting production with nginx reverse proxy...$(NC)"
+	@echo "$(YELLOW)Port: ${NGINX_PORT:-80} | Container: $(APP_NAME)-prod-nginx$(NC)"
+	docker compose -p $(APP_NAME) --profile prod-nginx up --build
+
+prod-nginx-detached: ## Start production with nginx in background
+	@echo "$(CYAN)🏗️ Starting production with nginx (background)...$(NC)"
+	docker compose -p $(APP_NAME) --profile prod-nginx up --build -d
+	@echo "$(GREEN)✅ Production with nginx started on port ${NGINX_PORT:-80}$(NC)"
+
+nginx-logs: ## Show nginx container logs
+	@echo "$(CYAN)📋 Nginx container logs:$(NC)"
+	docker compose -p $(APP_NAME) logs -f nginx
+
+nginx-status: ## Check nginx status and configuration
+	@echo "$(CYAN)📊 Nginx status and configuration:$(NC)"
+	@if docker compose -p $(APP_NAME) ps nginx | grep -q "Up"; then \
+		echo "$(GREEN)✅ Nginx container is running$(NC)"; \
+		docker compose -p $(APP_NAME) exec nginx nginx -t; \
+		echo "$(CYAN)Nginx processes:$(NC)"; \
+		docker compose -p $(APP_NAME) exec nginx ps aux | grep nginx; \
+	else \
+		echo "$(RED)❌ Nginx container is not running$(NC)"; \
+	fi
+
+nginx-reload: ## Reload nginx configuration
+	@echo "$(CYAN)🔄 Reloading nginx configuration...$(NC)"
+	@if docker compose -p $(APP_NAME) ps nginx | grep -q "Up"; then \
+		docker compose -p $(APP_NAME) exec nginx nginx -s reload; \
+		echo "$(GREEN)✅ Nginx configuration reloaded$(NC)"; \
+	else \
+		echo "$(RED)❌ Nginx container is not running$(NC)"; \
+	fi
 
 # =============================================================================
 # Container Management Commands
@@ -353,6 +410,7 @@ perf: ## Show container performance stats
 
 # Mark all targets as PHONY to avoid conflicts with file names
 .PHONY: help create dev dev-detached dev-logs dev-shell prod prod-detached prod-pm2 prod-pm2-detached prod-logs prod-shell \
+        nginx nginx-detached prod-nginx prod-nginx-detached nginx-logs nginx-status nginx-reload \
         stop restart clean rebuild prune install install-dev update status logs health debug inspect \
         test test-watch test-coverage lint lint-fix security security-fix backup restore api-test \
         check-tools env-info perf
