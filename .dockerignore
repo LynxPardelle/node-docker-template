@@ -87,7 +87,6 @@ temp/
 *.temp
 
 # Package manager files
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 yarn-error.log
@@ -236,9 +235,6 @@ uploads/
 public/uploads/
 dist/
 build/
-
-# PM2 files
-ecosystem.config.js
 
 # Certificate files
 *.pem

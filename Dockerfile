@@ -43,9 +43,9 @@ RUN set -e; \
             # If the specific UID is taken, create user without specifying UID
             adduser -S -G appgroup -s /bin/sh appuser; \
         fi; \
-    fi && \
-    mkdir -p logs tmp uploads && \
-    chown -R appuser:appgroup /app
+    fi
+RUN mkdir -p logs tmp uploads
+RUN chown -R appuser:appgroup /app
 
 # Copy package files for dependency caching
 COPY --chown=appuser:appgroup package*.json ./
@@ -56,8 +56,12 @@ COPY --chown=appuser:appgroup package*.json ./
 FROM base AS dependencies
 
 # Install production dependencies only
-RUN npm ci --only=production --no-audit --no-fund && \
-    npm cache clean --force
+RUN if [ -f package-lock.json ]; then \
+        npm ci --only=production --no-audit --no-fund; \
+    else \
+        npm install --only=production --no-audit --no-fund; \
+    fi
+RUN npm cache clean --force
 
 # -----------------------------------------------------------------------------
 # Dev Dependencies Stage - All dependencies + dev tools
@@ -68,9 +72,13 @@ FROM base AS dev-dependencies
 RUN apk add --no-cache vim
 
 # Install all dependencies and global tools in fewer layers
-RUN npm ci --no-audit --no-fund && \
-    npm install -g nodemon pm2 && \
-    npm cache clean --force
+RUN if [ -f package-lock.json ]; then \
+        npm ci --no-audit --no-fund; \
+    else \
+        npm install --no-audit --no-fund; \
+    fi
+RUN npm install -g nodemon pm2
+RUN npm cache clean --force
 
 # -----------------------------------------------------------------------------
 # Development Stage - Hot-reload development environment
