@@ -224,7 +224,7 @@ CMD ["pm2-runtime", "start", "ecosystem.config.js"]
 # -----------------------------------------------------------------------------
 # Nginx Reverse Proxy Stage - Load balancer and reverse proxy
 # -----------------------------------------------------------------------------
-FROM nginx:1.25-alpine AS nginx
+FROM nginx:mainline-alpine3.22 AS nginx
 
 # Install security updates and basic tools
 RUN apk update && \
@@ -267,7 +267,7 @@ CMD ["nginx", "-g", "daemon off;"]
 # -----------------------------------------------------------------------------
 # Production with Nginx Stage - Node.js app behind nginx reverse proxy
 # -----------------------------------------------------------------------------
-FROM nginx:1.25-alpine AS production-nginx
+FROM nginx:mainline-alpine3.22 AS production-nginx
 
 # Install security updates and essential tools
 RUN apk update && \
